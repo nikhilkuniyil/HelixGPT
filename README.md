@@ -1,6 +1,13 @@
-# mini-gpt-playground
+# HelixGPT
 
-A small GPT-style language model for learning and experimentation.
+A tiny GPT-style language model for learning and experimentation on CPU/M1.
+
+## What’s Inside
+
+- Minimal GPT with RoPE positional encoding and KV cache
+- Char-level tokenizer + data prep script
+- Simple training loop with checkpoints
+- Standalone generation script
 
 ## Setup
 
@@ -10,7 +17,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Prepare data
+## Prepare Data
 
 Place your text at `data/input.txt`, then run:
 
@@ -18,11 +25,18 @@ Place your text at `data/input.txt`, then run:
 python prepare_data.py
 ```
 
+This writes:
+
+- `data/tokens.pt`
+- `data/vocab.json`
+
 ## Train
 
 ```bash
 python train.py
 ```
+
+Checkpoints are written to `checkpoints/ckpt.pt`.
 
 ## Generate
 
@@ -30,7 +44,21 @@ python train.py
 python generate.py --ckpt checkpoints/ckpt.pt
 ```
 
+Options:
+
+- `--max_new_tokens` (default: 200)
+- `--temperature` (default: 0.9)
+- `--top_k` (default: 40)
+
+## Project Layout
+
+- `model.py` — GPT model, RoPE, KV cache
+- `tokenizer.py` — char-level vocab + encode/decode
+- `prepare_data.py` — build vocab + token ids
+- `train.py` — training loop + checkpointing
+- `generate.py` — sampling script
+
 ## Notes
 
-- RoPE positional encoding and KV cache are included.
-- The model is intentionally small for CPU/M1 training.
+The defaults are intentionally small so the model can train on CPU/M1. Edit
+the `TrainConfig` in `train.py` for bigger models once you’re ready.
