@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+.venv/
+.env/
+checkpoints/
+data/tokens.pt
+data/vocab.json
