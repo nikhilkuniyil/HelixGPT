@@ -20,6 +20,11 @@ class TrainConfig:
     n_head: int = 4
     n_layer: int = 2
     dropout: float = 0.1
+    lora_enabled: bool = False
+    lora_r: int = 8
+    lora_alpha: float = 16.0
+    lora_dropout: float = 0.0
+    lora_freeze_base: bool = True
     seed: int = 1337
     ckpt_path: str = "checkpoints/ckpt.pt"
     tokens_path: str = "data/tokens.pt"
@@ -116,6 +121,11 @@ model_cfg = GPTConfig(
     n_head=cfg.n_head,
     n_layer=cfg.n_layer,
     dropout=cfg.dropout,
+    lora_enabled=cfg.lora_enabled,
+    lora_r=cfg.lora_r,
+    lora_alpha=cfg.lora_alpha,
+    lora_dropout=cfg.lora_dropout,
+    lora_freeze_base=cfg.lora_freeze_base,
 )
 model = GPTLanguageModel(model_cfg).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)

@@ -13,6 +13,65 @@ class GPTConfig:
     n_head: int = 4
     n_layer: int = 2
     dropout: float = 0.1
+    lora_enabled: bool = False
+    lora_r: int = 8
+    lora_alpha: float = 16.0
+    lora_dropout: float = 0.0
+    lora_freeze_base: bool = True
+
+
+class LoRALinear(nn.Module):
+    """Linear layer with optional LoRA adapter for low-rank fine-tuning."""
+
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        r,
+        lora_alpha=1.0,
+        lora_dropout=0.0,
+        bias=True,
+        freeze_base=False,
+    ):
+        super().__init__()
+        self.base = nn.Linear(in_features, out_features, bias=bias)
+        self.r = r
+        self.scaling = lora_alpha / r if r > 0 else 1.0
+        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
+
+        if r > 0:
+            self.lora_A = nn.Parameter(torch.randn(r, in_features) * 0.01)
+            self.lora_B = nn.Parameter(torch.zeros(out_features, r))
+        else:
+            self.register_parameter("lora_A", None)
+            self.register_parameter("lora_B", None)
+
+        if freeze_base:
+            for p in self.base.parameters():
+                p.requires_grad_(False)
+
+    def forward(self, x):
+        out = self.base(x)
+        if self.r > 0:
+            lora = self.lora_dropout(x) @ self.lora_A.t()
+            lora = lora @ self.lora_B.t()
+            out = out + lora * self.scaling
+        return out
+
+
+def make_linear(in_features, out_features, cfg: GPTConfig, bias=True):
+    # use LoRA adapters when enabled for low-rank fine-tuning
+    if cfg.lora_enabled:
+        return LoRALinear(
+            in_features,
+            out_features,
+            r=cfg.lora_r,
+            lora_alpha=cfg.lora_alpha,
+            lora_dropout=cfg.lora_dropout,
+            bias=bias,
+            freeze_base=cfg.lora_freeze_base,
+        )
+    return nn.Linear(in_features, out_features, bias=bias)
 
 
 class Head(nn.Module):
@@ -24,9 +83,10 @@ class Head(nn.Module):
         if head_size % 2 != 0:
             raise ValueError("RoPE requires an even head_size")
         self.head_size = head_size
-        self.key = nn.Linear(cfg.n_embed, head_size, bias=False)
-        self.query = nn.Linear(cfg.n_embed, head_size, bias=False)
-        self.value = nn.Linear(cfg.n_embed, head_size, bias=False)
+        # LoRA can be injected into the attention projections for efficient fine-tuning
+        self.key = make_linear(cfg.n_embed, head_size, cfg, bias=False)
+        self.query = make_linear(cfg.n_embed, head_size, cfg, bias=False)
+        self.value = make_linear(cfg.n_embed, head_size, cfg, bias=False)
         self.register_buffer("tril", torch.tril(torch.ones(cfg.block_size, cfg.block_size)))
         inv_freq = 1.0 / (10000 ** (torch.arange(0, head_size, 2) / head_size))
         self.register_buffer("inv_freq", inv_freq)
@@ -92,7 +152,8 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
         self.heads = nn.ModuleList([Head(cfg) for _ in range(cfg.n_head)])
-        self.proj = nn.Linear(cfg.n_embed, cfg.n_embed)
+        # LoRA on the output projection helps adaptation with minimal params
+        self.proj = make_linear(cfg.n_embed, cfg.n_embed, cfg)
         self.dropout = nn.Dropout(cfg.dropout)
 
     def forward(self, x, past_kv=None):
@@ -116,9 +177,9 @@ class FeedFoward(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(cfg.n_embed, 4 * cfg.n_embed),
+            make_linear(cfg.n_embed, 4 * cfg.n_embed, cfg),
             nn.ReLU(),
-            nn.Linear(4 * cfg.n_embed, cfg.n_embed),
+            make_linear(4 * cfg.n_embed, cfg.n_embed, cfg),
             nn.Dropout(cfg.dropout),
         )
 
